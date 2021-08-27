@@ -14,7 +14,7 @@ use super::args::{self, sanitise_globals, Args};
 
 pub fn main() -> anyhow::Result<()> {
     let args = sanitise_globals(Args::from_args());
-
+    println!("{:?}", args);
     match args.command {
         args::Command::Profile => {
             println!("whoops, this is in beta");

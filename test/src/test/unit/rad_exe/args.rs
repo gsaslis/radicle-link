@@ -29,6 +29,29 @@ fn rad_profile_first_precedence() {
 }
 
 #[test]
+fn rad_profile_first_precedence_multiple_externals() {
+    let external = vec![
+        "xxx".to_string(),
+        RAD_PROFILE_ARG.to_string(),
+        "def".to_string(),
+        RAD_PROFILE_ARG.to_string(),
+        "ghi".to_string(),
+    ];
+    let args = Args {
+        rad_profile: Some("abc".parse().unwrap()),
+        rad_quiet: false,
+        rad_verbose: false,
+        command: Command::External(external),
+    };
+
+    let args = sanitise_globals(args);
+    if let Command::External(external) = args.command {
+        let index = find_arg(RAD_PROFILE_ARG, &external);
+        assert_eq!("abc", external[index.unwrap() + 1]);
+    }
+}
+
+#[test]
 fn rad_profile_second_precedence() {
     env::set_var("RAD_PROFILE", "ghi");
     let external = vec![
@@ -47,6 +70,30 @@ fn rad_profile_second_precedence() {
     if let Command::External(external) = args.command {
         let index = find_arg(RAD_PROFILE_ARG, &external);
         assert_eq!("def", external[index.unwrap() + 1]);
+    }
+}
+
+#[test]
+fn rad_profile_second_precedence_multiple() {
+    env::set_var("RAD_PROFILE", "ghi");
+    let external = vec![
+        "xxx".to_string(),
+        RAD_PROFILE_ARG.to_string(),
+        "def".to_string(),
+        RAD_PROFILE_ARG.to_string(),
+        "ghi".to_string(),
+    ];
+    let args = Args {
+        rad_profile: None,
+        rad_quiet: false,
+        rad_verbose: false,
+        command: Command::External(external),
+    };
+
+    let args = sanitise_globals(args);
+    if let Command::External(external) = args.command {
+        let index = find_arg(RAD_PROFILE_ARG, &external);
+        assert_eq!("ghi", external[index.unwrap() + 1]);
     }
 }
 

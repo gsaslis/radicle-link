@@ -49,10 +49,25 @@ pub enum Command {
 /// If an external subcommand is called, we sanitise the global arguments according to the rules defined in [RFC 698](https://github.com/radicle-dev/radicle-link/blob/master/docs/rfc/0698-cli-infrastructure.adoc#global-parameters).
 ///
 /// The rules are summarised as:
-///   * The first value takes precedence, e.g. `rad --rad-profile deaf xxx
-///     --rad-profile beef` will result in `deaf`
+///   * The `rad` global _always_ takes precedence, e.g. `rad --rad-profile deaf
+///     xxx --rad-profile beef` will result in `deaf`
+///   * If multiple `rad` globals are given, it is an error, i.e. `rad
+///     --rad-profile deaf --rad-profile beef`
+///   * If multiple globals are given as part of the external command, the last
+///     one is take, e.g. `rad xxx --rad-profile deaf --rad-profile beef` will
+///     result in `beef`.
 ///   * Command line arguments take precedence over environment variables, e.g.
 ///     `RAD_PROFILE=deaf rad --rad-profile def` will result in `beef`
+///
+/// # Examples
+///
+/// ```text
+/// rad --rad-profile=deaf xxx --rad-profile=beef # deaf
+/// rad xxx --rad-profile=beef # beef
+/// rad --rad-profile=deaf --rad-profile=beef xxx # beef
+/// rad xxx --rad-profile=deaf --rad-profile=beef # beef
+/// rad --rad-profile=dead xxx --rad-profile=deaf --rad-profile=beef # dead
+/// ```
 pub fn sanitise_globals(mut args: Args) -> Args {
     match &mut args.command {
         Command::External(external) => {
@@ -76,14 +91,12 @@ pub fn sanitise_globals(mut args: Args) -> Args {
 fn sanitise_option(arg: &str, env: &str, global: Option<String>, external: &mut Vec<String>) {
     let env = env::var(env).ok();
     let ex_arg = {
-        let index = find_arg(arg, external);
-        match index {
-            Some(index) => {
-                external.remove(index);
-                Some(external.remove(index))
-            },
-            None => None,
+        let mut value = None;
+        while let Some(index) = find_arg(arg, external) {
+            external.remove(index);
+            value = Some(external.remove(index))
         }
+        value
     };
     let value = global.or(ex_arg).or(env);
     if let Some(value) = value {
@@ -94,14 +107,12 @@ fn sanitise_option(arg: &str, env: &str, global: Option<String>, external: &mut 
 fn sanitise_flag(arg: &str, env: &str, val: bool, external: &mut Vec<String>) {
     let env = env::var(env).ok();
     let ex_arg = {
-        let index = find_arg(arg, external);
-        match index {
-            Some(index) => {
-                external.remove(index);
-                Some(true)
-            },
-            None => None,
+        let mut value = None;
+        while let Some(index) = find_arg(arg, external) {
+            external.remove(index);
+            value = Some(true)
         }
+        value
     };
     let value = val || ex_arg.is_some() || env.is_some();
     if value {
