@@ -100,13 +100,16 @@ features = ["git2"]
 [dependencies.link-identities]
 path = "../link-identities"
 
+[dependencies.link-replication]
+path = "../link-replication"
+
 [dependencies.radicle-data]
 path = "../data"
 features = ["minicbor"]
 
 [dependencies.radicle-git-ext]
 path = "../git-ext"
-features = ["serde", "minicbor"]
+features = ["serde", "minicbor", "git-repository"]
 
 [dependencies.radicle-macros]
 path = "../macros"

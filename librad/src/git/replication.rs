@@ -29,6 +29,8 @@ use crate::{
 
 pub use crate::identities::git::Urn;
 
+pub mod context;
+
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum Error {

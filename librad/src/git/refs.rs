@@ -572,7 +572,6 @@ impl Serialize for Signed<Verified> {
 }
 
 pub(crate) struct Loaded {
-    #[allow(unused)]
     pub at_commit: git_ext::Oid,
     pub refs: Signed<Verified>,
 }
