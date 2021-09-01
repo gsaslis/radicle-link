@@ -63,7 +63,7 @@ fn smoke() {
         let repo_dir = tempdir().unwrap();
 
         assert!(keyfile_exists(rad_paths.keys_dir()));
-        eprintln!("expected key file at {}", rad_paths.keys_dir().display());
+        tracing::error!("expected key file at {}", rad_paths.keys_dir().display());
 
         let mut child = Command::new("git")
             .arg("-c")

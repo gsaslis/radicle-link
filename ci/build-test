@@ -5,4 +5,4 @@ echo '--- Build'
 cargo build --workspace --all-features
 
 echo '--- Test'
-RUST_LOG=info cargo test --workspace --all-features -- --no-capture
+RUST_LOG=info cargo test --workspace --all-features
