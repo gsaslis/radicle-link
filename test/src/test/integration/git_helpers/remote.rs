@@ -24,8 +24,6 @@ use crate::{logging, rad::identities::create_test_project};
 
 const PASSPHRASE: &str = "123";
 
-// NOTE(finto): this test is running into issues with the key going missing part-way through the test (see https://github.com/radicle-dev/radicle-link/pull/775#issuecomment-907016375 for more commentary). I'm disabling it since we aim to have a git daemon server to replace this and the issue SHOULD NOT show up in real use scenarios, since I believe this is due to high levels of concurrency in the test suite.
-#[ignore]
 #[test]
 fn smoke() {
     logging::init();
@@ -76,6 +74,9 @@ fn smoke() {
         let status = child.wait().unwrap();
         assert!(status.success())
     }
+    drop(rad_paths);
+    drop(profile);
+    drop(rad_dir);
 }
 
 fn setup_project(paths: &Paths, key: SecretKey) -> anyhow::Result<Urn> {
