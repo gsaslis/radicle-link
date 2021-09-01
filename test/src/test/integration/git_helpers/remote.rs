@@ -56,9 +56,18 @@ fn smoke() {
         assert!(status.success())
     }
 
+    if !keyfile_exists(rad_paths.keys_dir()) {
+        tracing::warn!("key gone! (1)");
+    }
+
     // Clone from `urn` into a fresh repo
     {
         let repo_dir = tempdir().unwrap();
+
+        if !keyfile_exists(rad_paths.keys_dir()) {
+            tracing::warn!("key gone! (2)");
+        }
+
         let mut child = Command::new("git")
             .arg("-c")
             .arg(format!("credential.helper={}", credential_helper()))
@@ -71,12 +80,20 @@ fn smoke() {
             .spawn()
             .unwrap();
 
+        if !keyfile_exists(rad_paths.keys_dir()) {
+            tracing::warn!("key gone! (3)");
+        }
+
         let status = child.wait().unwrap();
         assert!(status.success())
     }
     drop(rad_paths);
     drop(profile);
     drop(rad_dir);
+}
+
+fn keyfile_exists(dir: &Path) -> bool {
+    dir.join("librad.key").is_file()
 }
 
 fn setup_project(paths: &Paths, key: SecretKey) -> anyhow::Result<Urn> {
