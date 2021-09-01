@@ -107,6 +107,8 @@ See https://git-scm.com/docs/git-remote-ext for more detail."#
 }
 
 fn get_signer(git_dir: &Path, keys_dir: &Path, url: &LocalUrl) -> anyhow::Result<BoxedSigner> {
+    use anyhow::Context as _;
+
     let mut cred = credential::Git::new(git_dir);
     let pass = cred.get(url)?;
     let file = keys_dir.join(SECRET_KEY_FILE);
@@ -114,7 +116,10 @@ fn get_signer(git_dir: &Path, keys_dir: &Path, url: &LocalUrl) -> anyhow::Result
         &file,
         Pwhash::new(pass.clone(), *crypto::KDF_PARAMS_PROD),
     );
-    let key: SecretKey = keystore.get_key().map(|keypair| keypair.secret_key)?;
+    let key: SecretKey = keystore
+        .get_key()
+        .map(|keypair| keypair.secret_key)
+        .context(format!("key file: {}", file.display()))?;
     cred.put(url, pass)?;
 
     Ok(SomeSigner { signer: key }.into())
