@@ -56,17 +56,13 @@ fn smoke() {
         assert!(status.success())
     }
 
-    if !keyfile_exists(rad_paths.keys_dir()) {
-        tracing::warn!("key gone! (1)");
-    }
+    assert!(keyfile_exists(rad_paths.keys_dir()));
 
     // Clone from `urn` into a fresh repo
     {
         let repo_dir = tempdir().unwrap();
 
-        if !keyfile_exists(rad_paths.keys_dir()) {
-            tracing::warn!("key gone! (2)");
-        }
+        assert!(keyfile_exists(rad_paths.keys_dir()));
 
         let mut child = Command::new("git")
             .arg("-c")
@@ -80,9 +76,7 @@ fn smoke() {
             .spawn()
             .unwrap();
 
-        if !keyfile_exists(rad_paths.keys_dir()) {
-            tracing::warn!("key gone! (3)");
-        }
+        assert!(keyfile_exists(rad_paths.keys_dir()));
 
         let status = child.wait().unwrap();
         assert!(status.success())
