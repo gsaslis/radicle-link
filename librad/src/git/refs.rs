@@ -314,7 +314,7 @@ impl Refs {
 
     /// Compute the current [`Refs`], sign them, and store them at the
     /// `rad/signed_refs` branch of [`Urn`].
-    #[tracing::instrument(skip(storage, urn), fields(urn = %urn))]
+    #[tracing::instrument(skip(storage, urn), fields(urn = %urn, local_peer = %storage.peer_id()))]
     pub fn update(storage: &Storage, urn: &Urn) -> Result<Updated, stored::Error> {
         let branch = Reference::rad_signed_refs(Namespace::from(urn), None);
         tracing::debug!("updating signed refs for {}", branch);
@@ -361,10 +361,11 @@ impl Refs {
         match commit {
             Ok(commit_id) => {
                 tracing::trace!(
-                    "updated signed refs at {} to {}: {:?}",
-                    branch,
-                    commit_id,
-                    signed_refs.refs
+                    ?signed_refs.refs,
+                    %branch,
+                    head = %commit_id,
+                    parent = ?parent.map(|commit| commit.id()),
+                    "updated signed refs for {}", urn
                 );
 
                 Ok(Updated::Updated {

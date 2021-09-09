@@ -24,14 +24,12 @@ use crate::{
 };
 
 pub mod config;
-pub mod fetcher;
 pub mod glob;
 pub mod pool;
 pub mod read;
 pub mod watch;
 
 pub use config::Config;
-pub use fetcher::{Fetcher, Fetchers};
 pub use glob::Pattern;
 pub use pool::{Pool, PoolError, Pooled, PooledRef};
 pub use read::{
@@ -68,7 +66,6 @@ pub mod error {
 pub struct Storage {
     inner: ReadOnly,
     signer: BoxedSigner,
-    fetchers: Fetchers,
 }
 
 impl Storage {
@@ -86,18 +83,6 @@ impl Storage {
     /// However, if you need multiple [`Storage`]s to be shared between
     /// threads, use a [`Pool`] instead.
     pub fn open<S>(paths: &Paths, signer: S) -> Result<Self, error::Init>
-    where
-        S: Signer + Clone,
-        S::Error: std::error::Error + Send + Sync + 'static,
-    {
-        Self::with_fetchers(paths, signer, Default::default())
-    }
-
-    pub fn with_fetchers<S>(
-        paths: &Paths,
-        signer: S,
-        fetchers: Fetchers,
-    ) -> Result<Self, error::Init>
     where
         S: Signer + Clone,
         S::Error: std::error::Error + Send + Sync + 'static,
@@ -129,7 +114,6 @@ impl Storage {
         Ok(Self {
             inner: ReadOnly { backend, peer_id },
             signer: BoxedSigner::from(SomeSigner { signer }),
-            fetchers,
         })
     }
 
@@ -160,11 +144,7 @@ impl Storage {
         Self::open(paths, signer)
     }
 
-    pub fn from_read_only<S>(
-        ro: ReadOnly,
-        signer: S,
-        fetchers: Fetchers,
-    ) -> Result<Self, error::Init>
+    pub fn from_read_only<S>(ro: ReadOnly, signer: S) -> Result<Self, error::Init>
     where
         S: Signer + Clone,
         S::Error: std::error::Error + Send + Sync + 'static,
@@ -176,7 +156,6 @@ impl Storage {
         Ok(Self {
             inner: ro,
             signer: BoxedSigner::from(SomeSigner { signer }),
-            fetchers,
         })
     }
 
@@ -217,10 +196,6 @@ impl Storage {
     // model "capabilities" in terms of traits.
     pub(super) fn as_raw(&self) -> &git2::Repository {
         &self.inner.backend
-    }
-
-    fn fetchers(&self) -> &Fetchers {
-        &self.fetchers
     }
 }
 

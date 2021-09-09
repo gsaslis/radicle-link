@@ -10,6 +10,7 @@ doctest = true
 test = false
 
 [dependencies]
+async-lock = "2.4.0"
 async-stream = "0.3"
 async-trait = "0.1"
 backoff = "0.3"

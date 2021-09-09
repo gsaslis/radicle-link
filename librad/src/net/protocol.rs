@@ -20,7 +20,12 @@ use super::{
 };
 use crate::{
     executor,
-    git::{self, p2p::transport::GitStreamFactory, replication, storage},
+    git::{
+        self,
+        p2p::{server::GitServer, transport::GitStreamFactory},
+        storage,
+    },
+    net::replication::{self, Replication},
     paths::Paths,
     rate_limit::RateLimiter,
     PeerId,
@@ -49,7 +54,7 @@ mod tick;
 
 mod tincans;
 pub(super) use tincans::TinCans;
-pub use tincans::{Interrogation, RecvError};
+pub use tincans::{Connected, Interrogation, RecvError};
 
 mod state;
 pub use state::Quota;
@@ -151,6 +156,7 @@ pub async fn bind<Sign, Store>(
     phone: TinCans,
     config: Config,
     signer: Sign,
+    replication: Replication,
     storage: Store,
     caches: cache::Caches,
 ) -> Result<Bound<Store>, error::Bootstrap>
@@ -185,10 +191,10 @@ where
         endpoint,
         membership,
         storage,
+        replication,
         phone: phone.clone(),
         config: StateConfig {
             paths: Arc::new(config.paths),
-            replication: config.replication,
             fetch: config.fetch,
         },
         caches,

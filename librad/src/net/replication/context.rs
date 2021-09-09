@@ -64,8 +64,8 @@ pub mod error {
         #[error("unknown identity kind")]
         UnknownIdentityKind(Box<SomeIdentity>),
 
-        #[error("delegate identity not found")]
-        MissingDelegate(Urn),
+        #[error("delegate identity {0} not found")]
+        MissingDelegate(identities::git::Urn),
 
         #[error(transparent)]
         Person(#[from] Box<identities::error::VerifyPerson>),
@@ -118,12 +118,12 @@ pub mod error {
     }
 }
 
-type Network = io::Network<Urn, io::Refdb, quic::Connection>;
+type Network = io::Network<Urn, io::Refdb<io::Odb>, io::Odb, quic::Connection>;
 
 pub struct Context<'a> {
     urn: Urn,
     store: &'a Storage,
-    refdb: io::Refdb,
+    refdb: io::Refdb<io::Odb>,
     net: Network,
 }
 
@@ -132,18 +132,19 @@ impl<'a> Context<'a> {
         store: &'a Storage,
         conn: quic::Connection,
         urn: Urn,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync + 'static>> {
         let info = io::UserInfo {
             name: store.config()?.user_name()?,
             peer_id: *store.peer_id(),
         };
 
         let git_dir = store.path();
-        let refdb = io::Refdb::new(info.clone(), git_dir, &urn)?;
-        let net = io::Network::new(refdb, conn, git_dir, urn.clone());
-
-        // XXX: We need a second refdb due to the 'static requirement for async
-        let refdb = io::Refdb::new(info, git_dir, &urn)?;
+        let odb = io::Odb::at(git_dir)?;
+        let net = {
+            let refdb = io::Refdb::new(info.clone(), git_dir, odb.clone(), &urn)?;
+            io::Network::new(refdb, conn, git_dir, urn.clone())
+        };
+        let refdb = io::Refdb::new(info, git_dir, odb, &urn)?;
 
         Ok(Self {
             urn,
@@ -179,7 +180,7 @@ impl<'a> Context<'a> {
                         let urn = Urn(urn);
                         resolve(&urn)
                             .map(|oid| git_ext::Oid::from(oid.as_ref().to_owned()).into())
-                            .ok_or(error::Verification::MissingDelegate(urn))
+                            .ok_or(error::Verification::MissingDelegate(urn.0))
                     },
                 )?;
                 Ok(SomeVerifiedIdentity::Project(verified))
@@ -213,6 +214,14 @@ impl VerifiedIdentity for SomeVerifiedIdentity {
             Self::Person(p) => p.content_id,
             Self::Project(p) => p.content_id,
         }
+    }
+
+    fn urn(&self) -> Self::Urn {
+        match self {
+            Self::Person(p) => p.urn(),
+            Self::Project(p) => p.urn(),
+        }
+        .into()
     }
 
     fn delegate_ids(&self) -> NonEmpty<BTreeSet<PeerId>> {
@@ -257,6 +266,12 @@ impl VerifiedIdentity for SomeVerifiedIdentity {
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Urn(identities::git::Urn);
+
+impl From<identities::git::Urn> for Urn {
+    fn from(urn: identities::git::Urn) -> Self {
+        Self(urn)
+    }
+}
 
 impl Deref for Urn {
     type Target = identities::git::Urn;
@@ -359,7 +374,12 @@ impl SignedRefs for Context<'_> {
     type Error = error::Sigrefs;
 
     fn load(&self, of: &PeerId, cutoff: usize) -> Result<Option<Sigrefs<Self::Oid>>, Self::Error> {
-        match refs::load(&self.store, &self.urn, *of)? {
+        let of = if of == self.store.peer_id() {
+            None
+        } else {
+            Some(*of)
+        };
+        match refs::load(&self.store, &self.urn, of)? {
             None => Ok(None),
             Some(refs::Loaded {
                 at_commit: at,
@@ -411,17 +431,17 @@ impl SignedRefs for Context<'_> {
 }
 
 impl Tracking for Context<'_> {
+    type Urn = Urn;
     type Tracked = Tracked;
     type Error = tracking::Error;
 
-    fn track(&self, id: &PeerId) -> Result<(), Self::Error> {
-        tracking::track(self.store, &self.urn, *id).map(|_| ())
+    fn track(&self, id: &PeerId, urn: Option<&Self::Urn>) -> Result<(), Self::Error> {
+        tracking::track(self.store, urn.unwrap_or(&self.urn), *id).map(|_| ())
     }
 
-    fn tracked(&self) -> Self::Tracked {
-        Tracked {
-            inner: Some(tracking::tracked(self.store, &self.urn)),
-        }
+    fn tracked(&self, urn: Option<&Self::Urn>) -> Self::Tracked {
+        let inner = Some(tracking::tracked(self.store, urn.unwrap_or(&self.urn)));
+        Tracked { inner }
     }
 }
 
@@ -452,13 +472,14 @@ impl Iterator for Tracked {
 }
 
 impl Refdb for Context<'_> {
-    type Oid = <io::Refdb as Refdb>::Oid;
+    type Oid = <io::Refdb<io::Odb> as Refdb>::Oid;
 
-    type Scan<'a> = <io::Refdb as Refdb>::Scan<'a>;
+    type Scan<'a> = <io::Refdb<io::Odb> as Refdb>::Scan<'a>;
 
-    type FindError = <io::Refdb as Refdb>::FindError;
-    type ScanError = <io::Refdb as Refdb>::ScanError;
-    type TxError = <io::Refdb as Refdb>::TxError;
+    type FindError = <io::Refdb<io::Odb> as Refdb>::FindError;
+    type ScanError = <io::Refdb<io::Odb> as Refdb>::ScanError;
+    type TxError = <io::Refdb<io::Odb> as Refdb>::TxError;
+    type ReloadError = <io::Refdb<io::Odb> as Refdb>::ReloadError;
 
     fn refname_to_id(
         &self,
@@ -472,14 +493,18 @@ impl Refdb for Context<'_> {
         O: Into<Option<P>>,
         P: AsRef<Path>,
     {
-        self.refdb.scan(prefix.into())
+        self.refdb.scan(prefix)
     }
 
-    fn update<'a, I>(&self, updates: I) -> Result<Applied<'a>, Self::TxError>
+    fn update<'a, I>(&mut self, updates: I) -> Result<Applied<'a>, Self::TxError>
     where
         I: IntoIterator<Item = Update<'a>>,
     {
         self.refdb.update(updates)
+    }
+
+    fn reload(&mut self) -> Result<(), Self::ReloadError> {
+        self.refdb.reload()
     }
 }
 
@@ -493,7 +518,7 @@ impl Net for Context<'_> {
     ) -> Result<(N, Vec<FilteredRef<'static, T>>), Self::Error>
     where
         N: Negotiation<T> + Send,
-        T: Send,
+        T: Send + 'static,
     {
         self.net.run_fetch(neg).await
     }
@@ -509,7 +534,7 @@ impl io::Connection for quic::Connection {
         use net::connection::Duplex as _;
 
         let bi = self.open_bidi().await?;
-        let up = upgrade::upgrade(bi, upgrade::Git2).await?;
+        let up = upgrade::upgrade(bi, upgrade::Git).await?;
         Ok(up.into_stream().split())
     }
 }

@@ -27,10 +27,9 @@ use crate::{
     executor,
     git::{
         p2p::transport::{GitStream, GitStreamFactory},
-        replication,
         storage::{self, PoolError, PooledRef},
     },
-    net::{quic, upgrade},
+    net::{quic, replication::Replication, upgrade},
     paths::Paths,
     rate_limit::{self, Direct, Keyed, RateLimiter},
     PeerId,
@@ -39,7 +38,6 @@ use crate::{
 #[derive(Clone)]
 pub(super) struct StateConfig {
     pub paths: Arc<Paths>,
-    pub replication: replication::Config,
     pub fetch: config::Fetch,
 }
 
@@ -52,6 +50,7 @@ pub(super) struct State<S> {
     pub endpoint: Endpoint,
     pub membership: membership::Hpv<Pcg64Mcg, SocketAddr>,
     pub storage: Storage<S>,
+    pub replication: Replication,
     pub phone: TinCans,
     pub config: StateConfig,
     pub caches: cache::Caches,

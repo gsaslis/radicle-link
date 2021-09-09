@@ -8,20 +8,24 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 use futures::{future, StreamExt as _, TryFutureExt as _, TryStreamExt as _};
 use futures_timer::Delay;
 
-use super::protocol::{self, gossip};
 use crate::{
     executor,
-    git::{self, storage::Fetchers, Urn},
+    git::{self, identities::local::LocalIdentity, Urn},
+    net::{
+        protocol::{self, gossip},
+        replication::{self, Replication},
+    },
     PeerId,
     Signer,
 };
 
-pub use super::protocol::{
+pub use crate::net::protocol::{
     event::{
         self,
         downstream::{MembershipInfo, Stats},
         Upstream as ProtocolEvent,
     },
+    Connected,
     Interrogation,
     PeerInfo,
 };
@@ -94,6 +98,7 @@ pub struct Peer<S> {
     user_store: git::storage::Pool<git::storage::Storage>,
     caches: protocol::Caches,
     spawner: Arc<executor::Spawner>,
+    repl: Replication,
 }
 
 impl<S> Peer<S>
@@ -106,13 +111,11 @@ where
             .ok_or(error::Init::Runtime)?;
         let phone = protocol::TinCans::default();
         let storage_lock = git::storage::pool::Initialised::no();
-        let fetchers = Fetchers::default();
         let pool = git::storage::Pool::new(
-            git::storage::pool::Config::with_fetchers(
+            git::storage::pool::ReadWriteConfig::new(
                 config.protocol.paths.clone(),
                 config.signer.clone(),
                 storage_lock.clone(),
-                fetchers.clone(),
             ),
             config.storage.protocol.pool_size,
         );
@@ -122,22 +125,22 @@ where
             let urns = protocol::cache::urns::Filter::new(store, move |ev| phone.emit(ev))?;
             protocol::Caches { urns }
         };
+        let repl = Replication::new(Default::default());
         let peer_store = PeerStorage::new(
-            spawner.clone(),
-            pool,
             storage::Config {
-                replication: config.protocol.replication,
-                fetch_slot_wait_timeout: config.storage.protocol.fetch_slot_wait_timeout,
                 fetch_quota: config.protocol.rate_limits.gossip.fetches_per_peer_and_urn,
             },
+            spawner.clone(),
+            pool,
             caches.urns.clone(),
+            repl.clone(),
+            phone.clone(),
         );
         let user_store = git::storage::Pool::new(
-            git::storage::pool::Config::with_fetchers(
+            git::storage::pool::ReadWriteConfig::new(
                 config.protocol.paths.clone(),
                 config.signer.clone(),
                 storage_lock,
-                fetchers,
             ),
             config.storage.user.pool_size,
         );
@@ -149,6 +152,7 @@ where
             user_store,
             caches,
             spawner,
+            repl,
         })
     }
 
@@ -235,6 +239,29 @@ where
         self.phone.interrogate(peer)
     }
 
+    pub async fn replicate(
+        &self,
+        from: impl Into<(PeerId, Vec<SocketAddr>)>,
+        urn: Urn,
+        whoami: Option<LocalIdentity>,
+    ) -> Result<replication::Success, replication::Error> {
+        // TODO: errors
+        let from = from.into();
+        let remote_peer = from.0;
+        let Connected(conn) = self
+            .connect(from)
+            .await
+            .ok_or_else(|| format!("no connection to {}", remote_peer))?;
+        let store = self.user_store.get().await?;
+        self.repl
+            .replicate(&self.spawner, store, conn, urn, whoami)
+            .await
+    }
+
+    pub async fn connect(&self, to: impl Into<(PeerId, Vec<SocketAddr>)>) -> Option<Connected> {
+        self.phone.connect(to).await
+    }
+
     pub fn subscribe(
         &self,
     ) -> impl futures::Stream<Item = Result<ProtocolEvent, protocol::RecvError>> {
@@ -294,6 +321,7 @@ where
             self.phone.clone(),
             self.config.protocol.clone(),
             self.config.signer.clone(),
+            self.repl.clone(),
             self.peer_store.clone(),
             self.caches.clone(),
         )

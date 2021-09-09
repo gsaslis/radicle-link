@@ -27,14 +27,13 @@ use tokio_stream::wrappers::ReceiverStream;
 use librad::{
     git::{
         identities::{self, Urn},
-        replication,
-        storage::fetcher,
         tracking,
     },
     net::{
         discovery::{self, Discovery as _},
         peer::{self, Peer, ProtocolEvent},
         protocol::{self, gossip::Payload, PeerInfo},
+        replication,
     },
     profile,
     PeerId,
@@ -57,12 +56,6 @@ pub mod signer;
 pub enum Error {
     #[error("unable to resolve URN {0}")]
     NoSuchUrn(Urn),
-
-    #[error("error creating fetcher")]
-    MkFetcher(#[from] Box<dyn std::error::Error + Send + Sync + 'static>),
-
-    #[error("replication of {urn} from {remote_peer} already in-flight")]
-    Concurrent { urn: Urn, remote_peer: PeerId },
 
     #[error(transparent)]
     InitPeer(#[from] peer::error::Init),
@@ -98,16 +91,6 @@ pub enum Error {
 impl From<identities::Error> for Error {
     fn from(e: identities::Error) -> Self {
         Self::Identities(Box::new(e))
-    }
-}
-
-impl From<fetcher::Info> for Error {
-    fn from(
-        fetcher::Info {
-            urn, remote_peer, ..
-        }: fetcher::Info,
-    ) -> Self {
-        Self::Concurrent { urn, remote_peer }
     }
 }
 
@@ -437,22 +420,17 @@ impl Node {
         let addr_hints = peer_info.seen_addrs.iter().copied().collect::<Vec<_>>();
 
         let result = {
-            let cfg = api.protocol_config().replication;
-            let urn = urn.clone();
-            api.using_storage(move |storage| {
-                let fetcher = fetcher::PeerToPeer::new(urn.clone(), peer_id, addr_hints)
-                    .build(storage)
-                    .map_err(|e| Error::MkFetcher(e.into()))??;
-                let was_updated = tracking::track(storage, &urn, peer_id)?;
-                // Skip explicit replication if we already track the peer --
-                // normal gossip should take care of that.
-                if was_updated {
-                    replication::replicate(storage, fetcher, cfg, None)?;
-                }
-
-                Ok::<_, Error>(was_updated)
-            })
-            .await?
+            let tracked = api
+                .using_storage({
+                    let urn = urn.clone();
+                    move |s| tracking::track(s, &urn, peer_id)
+                })
+                .await??;
+            if tracked {
+                api.replicate((peer_id, addr_hints), urn.clone(), None)
+                    .await?;
+            }
+            Ok(tracked)
         };
 
         match &result {

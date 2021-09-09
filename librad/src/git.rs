@@ -3,13 +3,11 @@
 // This file is part of radicle-link, distributed under the GPLv3 with Radicle
 // Linking Exception. For full terms see the included LICENSE file.
 
-pub mod fetch;
 pub mod identities;
 pub mod include;
 pub mod local;
 pub mod p2p;
 pub mod refs;
-pub mod replication;
 
 pub mod storage;
 pub use storage::Storage;
