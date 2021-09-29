@@ -25,7 +25,7 @@ thiserror = "1.0"
 tracing = "0.1"
 
 [dependencies.git-repository]
-version = "0.9.1"
+version = "0.10"
 features = [ "unstable" ]
 
 [dependencies.link-crypto]
