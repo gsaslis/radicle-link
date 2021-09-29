@@ -20,11 +20,7 @@ use super::{
 };
 use crate::{
     executor,
-    git::{
-        self,
-        p2p::{server::GitServer, transport::GitStreamFactory},
-        storage,
-    },
+    git::storage,
     net::replication::{self, Replication},
     paths::Paths,
     rate_limit::RateLimiter,
@@ -230,10 +226,6 @@ where
     Store: ProtocolStorage<SocketAddr, Update = gossip::Payload> + Clone + 'static,
     Disco: futures::Stream<Item = (PeerId, Vec<SocketAddr>)> + Send + 'static,
 {
-    let _git_factory = Arc::new(Box::new(state.clone()) as Box<dyn GitStreamFactory>);
-    git::p2p::transport::register()
-        .register_stream_factory(state.local_id, Arc::downgrade(&_git_factory));
-
     let endpoint = state.endpoint.clone();
     let spawner = state.spawner.clone();
 
@@ -252,7 +244,6 @@ where
         let endpoint = endpoint.clone();
         async move {
             let res = io::connections::incoming(state, incoming).await;
-            drop(_git_factory);
             tracing::debug!("waiting on idle connections...");
             endpoint.wait_idle().await;
             drop(tasks);

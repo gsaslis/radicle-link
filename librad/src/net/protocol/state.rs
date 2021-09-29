@@ -5,7 +5,6 @@
 
 use std::{net::SocketAddr, ops::Deref, sync::Arc};
 
-use futures::future::TryFutureExt as _;
 use nonzero_ext::nonzero;
 use rand_pcg::Pcg64Mcg;
 use tracing::Instrument as _;
@@ -25,11 +24,8 @@ use super::{
 };
 use crate::{
     executor,
-    git::{
-        p2p::transport::{GitStream, GitStreamFactory},
-        storage::{self, PoolError, PooledRef},
-    },
-    net::{quic, replication::Replication, upgrade},
+    git::storage::{self, PoolError, PooledRef},
+    net::{quic, replication::Replication},
     paths::Paths,
     rate_limit::{self, Direct, Keyed, RateLimiter},
     PeerId,
@@ -104,46 +100,6 @@ where
 
     pub fn has_connection(&self, to: PeerId) -> bool {
         self.endpoint.get_connection(to).is_some()
-    }
-}
-
-#[async_trait]
-impl<S> GitStreamFactory for State<S>
-where
-    S: ProtocolStorage<SocketAddr, Update = gossip::Payload> + Clone + 'static,
-{
-    async fn open_stream(
-        &self,
-        to: &PeerId,
-        addr_hints: &[SocketAddr],
-    ) -> Option<Box<dyn GitStream>> {
-        let span = tracing::info_span!("open-git-stream", remote_id = %to);
-        match self
-            .connection(*to, addr_hints.iter().copied().collect::<Vec<_>>())
-            .instrument(span.clone())
-            .await
-        {
-            None => {
-                span.in_scope(|| tracing::error!("unable to obtain connection"));
-                None
-            },
-
-            Some(conn) => {
-                let stream = conn
-                    .open_bidi()
-                    .inspect_err(|e| tracing::error!(err = ?e, "unable to open stream"))
-                    .instrument(span.clone())
-                    .await
-                    .ok()?;
-                let upgraded = upgrade::upgrade(stream, upgrade::Git)
-                    .inspect_err(|e| tracing::error!(err = ?e, "unable to upgrade stream"))
-                    .instrument(span)
-                    .await
-                    .ok()?;
-
-                Some(Box::new(upgraded))
-            },
-        }
     }
 }
 
