@@ -18,6 +18,7 @@ use librad::{
     net::{connection::LocalInfo, peer::Peer, replication},
     Signer,
 };
+use tracing::{info, instrument};
 
 pub struct TestPerson {
     pub owner: Person,
@@ -49,6 +50,7 @@ impl TestPerson {
 
     /// Pull (fetch or clone) the project from known running peer `A` to peer
     /// `B`.
+    #[instrument(name = "test_person", skip(self, from, to), err)]
     pub async fn pull<A, B, S>(&self, from: &A, to: &B) -> anyhow::Result<replication::Success>
     where
         A: Deref<Target = Peer<S>> + LocalInfo<Addr = SocketAddr>,
@@ -59,6 +61,9 @@ impl TestPerson {
         let remote_peer = from.local_peer_id();
         let remote_addrs = from.listen_addrs();
         let urn = self.owner.urn();
+
+        info!("pull from {} to {}", remote_peer, to.peer_id());
+
         let res = to
             .replicate((remote_peer, remote_addrs), urn, None)
             .err_into::<replication::ErrorBox>()
@@ -136,6 +141,7 @@ impl TestProject {
 
     /// Pull (fetch or clone) the project from known running peer `A` to peer
     /// `B`.
+    #[instrument(name = "test_project", skip(self, from, to))]
     pub async fn pull<A, B, S>(&self, from: &A, to: &B) -> anyhow::Result<replication::Success>
     where
         A: Deref<Target = Peer<S>> + LocalInfo<Addr = SocketAddr>,
@@ -146,6 +152,8 @@ impl TestProject {
         let remote_peer = from.local_peer_id();
         let remote_addrs = from.listen_addrs();
         let urn = self.project.urn();
+
+        info!("pull from {} to {}", remote_peer, to.peer_id());
 
         let res = to
             .replicate((remote_peer, remote_addrs), urn, None)
