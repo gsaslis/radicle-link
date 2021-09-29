@@ -73,7 +73,6 @@ impl ExpectedReferences {
 }
 
 #[test]
-#[ignore]
 fn a_trois() {
     logging::init();
 
@@ -219,7 +218,6 @@ fn a_trois() {
 /// When `peer3` replicates from `peer1` they should have references for `peer1`
 /// and `peer2`, due to the tracking graph.
 #[test]
-#[ignore]
 fn threes_a_crowd() {
     logging::init();
 

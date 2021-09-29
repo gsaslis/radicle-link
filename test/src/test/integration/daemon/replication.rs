@@ -397,7 +397,9 @@ fn track_peer() -> Result<(), anyhow::Error> {
     })
 }
 
+// This is bogus: https://github.com/radicle-dev/radicle-link/issues/708#issuecomment-924994534
 #[test]
+#[ignore]
 fn replication_includes_user() -> Result<(), anyhow::Error> {
     logging::init();
 
