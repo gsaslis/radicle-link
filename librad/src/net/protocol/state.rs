@@ -18,7 +18,6 @@ use super::{
     gossip,
     io,
     membership,
-    nonce,
     tick,
     Endpoint,
     ProtocolStorage,
@@ -27,20 +26,19 @@ use super::{
 use crate::{
     executor,
     git::{
-        p2p::{
-            server::GitServer,
-            transport::{GitStream, GitStreamFactory},
-        },
+        p2p::transport::{GitStream, GitStreamFactory},
         replication,
         storage::{self, PoolError, PooledRef},
     },
     net::{quic, upgrade},
+    paths::Paths,
     rate_limit::{self, Direct, Keyed, RateLimiter},
     PeerId,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(super) struct StateConfig {
+    pub paths: Arc<Paths>,
     pub replication: replication::Config,
     pub fetch: config::Fetch,
 }
@@ -52,12 +50,10 @@ pub(super) struct StateConfig {
 pub(super) struct State<S> {
     pub local_id: PeerId,
     pub endpoint: Endpoint,
-    pub git: GitServer,
     pub membership: membership::Hpv<Pcg64Mcg, SocketAddr>,
     pub storage: Storage<S>,
     pub phone: TinCans,
     pub config: StateConfig,
-    pub nonces: nonce::NonceBag,
     pub caches: cache::Caches,
     pub spawner: Arc<executor::Spawner>,
     pub limits: RateLimits,

@@ -3,7 +3,7 @@
 // This file is part of radicle-link, distributed under the GPLv3 with Radicle
 // Linking Exception. For full terms see the included LICENSE file.
 
-use std::{fmt::Debug, future::Future, net::SocketAddr, sync::Arc, time::Duration};
+use std::{fmt::Debug, future::Future, net::SocketAddr, sync::Arc};
 
 use async_stream::stream;
 use futures::{stream::BoxStream, StreamExt};
@@ -20,12 +20,7 @@ use super::{
 };
 use crate::{
     executor,
-    git::{
-        self,
-        p2p::{server::GitServer, transport::GitStreamFactory},
-        replication,
-        storage,
-    },
+    git::{self, p2p::transport::GitStreamFactory, replication, storage},
     paths::Paths,
     rate_limit::RateLimiter,
     PeerId,
@@ -50,7 +45,6 @@ pub use info::{Capability, PartialPeerInfo, PeerAdvertisement, PeerInfo};
 mod accept;
 
 mod control;
-mod nonce;
 mod tick;
 
 mod tincans;
@@ -165,7 +159,6 @@ where
     Store: ProtocolStorage<SocketAddr, Update = gossip::Payload> + Clone + 'static,
 {
     let local_id = PeerId::from_signer(&signer);
-    let git = GitServer::new(&config.paths);
     let quic::BoundEndpoint { endpoint, incoming } = quic::Endpoint::bind(
         signer,
         &spawner,
@@ -180,8 +173,6 @@ where
         config.membership,
     );
     let storage = Storage::new(storage, config.rate_limits.storage);
-    // TODO: make configurable
-    let nonces = nonce::NonceBag::new(Duration::from_secs(300));
     let limits = RateLimits {
         membership: Arc::new(RateLimiter::keyed(
             config.rate_limits.membership,
@@ -192,15 +183,14 @@ where
     let state = State {
         local_id,
         endpoint,
-        git,
         membership,
         storage,
         phone: phone.clone(),
         config: StateConfig {
+            paths: Arc::new(config.paths),
             replication: config.replication,
             fetch: config.fetch,
         },
-        nonces,
         caches,
         spawner,
         limits,
