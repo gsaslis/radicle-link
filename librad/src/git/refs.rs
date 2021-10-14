@@ -364,7 +364,7 @@ impl Refs {
                     ?signed_refs.refs,
                     %branch,
                     head = %commit_id,
-                    parent = ?parent.map(|commit| commit.id()),
+                    parent = ?parent.as_ref().map(|commit| commit.id()),
                     "updated signed refs for {}", urn
                 );
 
