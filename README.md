@@ -20,7 +20,8 @@ To build the project, you need a Rust build enviroment (best obtained using
 [rustup]). To compile, run `cargo build`.
 
 External dependencies vary across operating systems / distributions. A `git`
-installation is currently required as a runtime dependency.
+installation is currently required as a runtime dependency. On MacOS, you will 
+also need `cmake` installed. 
 
 ## License
 
